@@ -591,7 +591,12 @@ run_ibm_location <- function(pop_size              = 2000,     # population size
                              
                              # disease parameters
                              num_days_infected     = 7,        # average number of days individuals are infected/infectious   
-                             transmission_prob     = 0.1,      # transmission probability per social contact                  
+                             transmission_prob     = 0.1,      # transmission probability per social contact
+                             
+                      
+                             #vaccination parameters
+                             vaccination_uptake = 0.1, # vaccine uptake [0,1]  
+                             vaccination_effectiveness = 1, # vaccine effectiveness [0,1]   
                              
                              # visualisation parameter
                              bool_show_demographics       = TRUE, # option to show the demography figures
@@ -621,6 +626,14 @@ run_ibm_location <- function(pop_size              = 2000,     # population size
     warning("ERROR: 'bool_show_demographics', 'add_baseline' and 'return_prevelance' should be a boolean")
     return(NULL)
   }
+  
+  # assert vaccination uptake range
+  stopifnot(0 <= vaccination_uptake)
+  stopifnot(vaccination_uptake <= 1)
+  
+  # assert vaccination effectiveness range
+  stopifnot(0 <= vaccination_effectiveness)
+  stopifnot(vaccination_effectiveness <= 1)
   
   ######################################################### #
   # INITIALIZE POPULATION & MODEL PARAMETERS  ----
@@ -717,6 +730,11 @@ run_ibm_location <- function(pop_size              = 2000,     # population size
     # step 5: identify newly recovered individuals
     new_recovered <- boolean_infected & rbinom(pop_size, size = 1, prob = recovery_probability)
     pop_data$health[new_recovered] <- 'R'
+    
+    #handle new vaccinations
+    flag_new_vaccinated <- pop_data$health == 'S' &
+      rbinom(pop_size, size = 1, prob = vaccination_uptake)
+    pop_data$health[flag_new_vaccinated] <- 'V'
     
     # step 6: log population health states
     log_pop_data[,day_i] <- pop_data$health
