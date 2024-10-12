@@ -595,8 +595,9 @@ run_ibm_location <- function(pop_size              = 2000,     # population size
                              
                       
                              #vaccination parameters
-                             vaccination_uptake = 0.1, # vaccine uptake [0,1]  
-                             vaccination_effectiveness = 1, # vaccine effectiveness [0,1]   
+                             vaccination_uptake = 0.0, # vaccine uptake [0,1],
+                             vaccination_start_delay = 0.0, # the amount of days the vaccination campaign is delayed
+                             vaccination_effectiveness = 1.0, # vaccine effectiveness [0,1]   
                              
                              # visualisation parameter
                              bool_show_demographics       = TRUE, # option to show the demography figures
@@ -658,10 +659,20 @@ run_ibm_location <- function(pop_size              = 2000,     # population size
   transmission_prob_household    <- contact_prob_household * transmission_prob
   transmission_prob_school       <- contact_prob_school    * transmission_prob
   transmission_prob_workplace    <- contact_prob_workplace * transmission_prob
+  
+  # set vaccinate effectiveness
+  id_effective                  <- sample(pop_size,pop_size*vaccination_effectiveness)
+  pop_data$vaccination_effective[id_effective] <- T
     
   # set vaccine coverage
   id_vaccinated                  <- sample(pop_size,pop_size*vaccine_coverage)
-  pop_data$health[id_vaccinated] <- 'V'
+  for (v in id_vaccinated ){
+    if (pop_data$vaccination_effective[v]){
+      pop_data$health[v] <- 'V'
+    }
+    
+  }
+  
   
   # introduce infected individuals in the population
   id_infected_seeds                             <- sample(which(pop_data$health=='S'),num_infected_seeds)
@@ -731,10 +742,19 @@ run_ibm_location <- function(pop_size              = 2000,     # population size
     new_recovered <- boolean_infected & rbinom(pop_size, size = 1, prob = recovery_probability)
     pop_data$health[new_recovered] <- 'R'
     
-    #handle new vaccinations
-    flag_new_vaccinated <- pop_data$health == 'S' &
-      rbinom(pop_size, size = 1, prob = vaccination_uptake)
-    pop_data$health[flag_new_vaccinated] <- 'V'
+    # handle new vaccinations
+    # only create new vaccinations when we are past the vaccination start delay
+    if (vaccination_start_delay < day_i){
+      
+      # change part of the susceptible population to recovered to 
+      # simulate the behavior of vaccination
+      # vaccination has also a certain effectiveness, and so these people cannot get to recovered 
+      flag_new_vaccinated <- pop_data$health == 'S' & pop_data$vaccination_effective &
+        rbinom(pop_size, size = 1, prob = vaccination_uptake)
+      
+      pop_data$health[flag_new_vaccinated] <- 'V'
+    }
+    
     
     # step 6: log population health states
     log_pop_data[,day_i] <- pop_data$health
@@ -754,6 +774,7 @@ run_ibm_location <- function(pop_size              = 2000,     # population size
   if(return_prevelance){
     return(data.frame(log_i=log_i,log_r=log_r))
   }
+
   
   # change figure configuration => 3 subplots
   par(mfrow=c(2,2))
@@ -772,6 +793,8 @@ run_ibm_location <- function(pop_size              = 2000,     # population size
   
   legend('top',legend=c('S','I','R','V'),col=1:4,lwd=2,ncol=2,cex=0.7,bg='white')
   
+  
+  
   if(add_baseline){
     out_baseline <- run_ibm_location(return_prevelance = T,bool_show_demographics=F)
     lines(out_baseline$log_i,  col=2,lwd=2,lty=2)
@@ -783,6 +806,7 @@ run_ibm_location <- function(pop_size              = 2000,     # population size
   if(all(is.na(pop_data$secondary_cases))){
     pop_data$secondary_cases <- -1
   }
+  
 
   boxplot(secondary_cases ~ time_of_infection, data=pop_data,
           xlab='time of infection (day)',
@@ -832,6 +856,7 @@ run_ibm_location <- function(pop_size              = 2000,     # population size
              breaks = plot_breaks)
   title(plot_title,cex.main = 0.7)
   
+  
   axis(side=1,
        at=seq(0,1,length.out=nrow(transmission_age_matrix)),
        labels=rownames(transmission_age_matrix),
@@ -846,7 +871,8 @@ run_ibm_location <- function(pop_size              = 2000,     # population size
   
   ## PRINT PARAMETERS AND RESULTS ----
   # collect possible parameter names
-  all_param <- c('pop_size','num_days' ,'num_infected_seeds','vaccine_coverage',
+  all_param <- c('pop_size','num_days' ,'num_infected_seeds','vaccine_coverage', 
+                 'vaccination_uptake', 'vaccination_start_delay', 'vaccination_effectiveness',
                  'rng_seed', 'num_days_infected','transmission_prob',
                  'num_contacts_community_day','contact_prob_household','contact_prob_school','contact_prob_workplace',
                  'num_schools','target_school_ages','num_workplaces','bool_show_demographics'
@@ -868,6 +894,8 @@ run_ibm_location <- function(pop_size              = 2000,     # population size
 
   # set back the defaul par(mfrow)
   par(mfrow=c(1,1))
+
+  return(length(which(pop_data$health == 'V'))/pop_size)
 }
 
 #' @title Create a synthetic population with households
@@ -947,7 +975,8 @@ create_population_matrix <- function(pop_size, num_schools, target_school_ages, 
                          time_of_infection   = NA,            # column to store the time of infection
                          generation_interval = 0,            # column to store the generation interval
                          secondary_cases     = 0,             # column to store the number of secondary cases
-                         stringsAsFactors = F)
+                         stringsAsFactors = F,
+                         vaccination_effective = F)
   
   # initiate school classes by age and number of schools
   if(num_schools>0){
