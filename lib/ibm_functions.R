@@ -595,9 +595,10 @@ run_ibm_location <- function(pop_size              = 2000,     # population size
                              
                       
                              #vaccination parameters
-                             vaccination_uptake = 0.0, # vaccine uptake [0,1],
+                             vaccination_speed = 0.0, # vaccine uptake [0,1],
                              vaccination_start_delay = 0.0, # the amount of days the vaccination campaign is delayed
-                             vaccination_effectiveness = 1.0, # vaccine effectiveness [0,1]   
+                             vaccination_effectiveness = 1.0, # vaccine effectiveness [0,1]
+                             vaccination_uptake = 1.0, # we will vaccinate people till we reach the vaccination uptake
                              
                              # visualisation parameter
                              bool_show_demographics       = TRUE, # option to show the demography figures
@@ -629,8 +630,8 @@ run_ibm_location <- function(pop_size              = 2000,     # population size
   }
   
   # assert vaccination uptake range
-  stopifnot(0 <= vaccination_uptake)
-  stopifnot(vaccination_uptake <= 1)
+  stopifnot(0 <= vaccination_speed)
+  stopifnot(vaccination_speed <= 1)
   
   # assert vaccination effectiveness range
   stopifnot(0 <= vaccination_effectiveness)
@@ -652,6 +653,7 @@ run_ibm_location <- function(pop_size              = 2000,     # population size
   #   - member_id       the household member index of each individual
   pop_data              <- create_population_matrix(pop_size, num_schools, 
                                                     target_school_ages, num_workplaces,
+                                                    vaccination_uptake,
                                                     bool_show_demographics)
   # set contact and transmission parameters
   contact_prob_community         <- 1-exp(-num_contacts_community_day / pop_size)  # rate to probability
@@ -749,8 +751,11 @@ run_ibm_location <- function(pop_size              = 2000,     # population size
       # change part of the susceptible population to recovered to 
       # simulate the behavior of vaccination
       # vaccination has also a certain effectiveness, and so these people cannot get to recovered 
-      flag_new_vaccinated <- pop_data$health == 'S' & pop_data$vaccination_effective &
-        rbinom(pop_size, size = 1, prob = vaccination_uptake)
+
+      want_to_be_vaccinated <- subset(pop_data, pop_data$accept_vaccine == T)
+      
+      flag_new_vaccinated <- want_to_be_vaccinated$health == 'S' & want_to_be_vaccinated$accept_vaccine == T & want_to_be_vaccinated$vaccination_effective &
+        rbinom(length(want_to_be_vaccinated$health), size = 1, prob = vaccination_speed)
       
       pop_data$health[flag_new_vaccinated] <- 'V'
     }
@@ -872,7 +877,7 @@ run_ibm_location <- function(pop_size              = 2000,     # population size
   ## PRINT PARAMETERS AND RESULTS ----
   # collect possible parameter names
   all_param <- c('pop_size','num_days' ,'num_infected_seeds','vaccine_coverage', 
-                 'vaccination_uptake', 'vaccination_start_delay', 'vaccination_effectiveness',
+                 'vaccination_speed', 'vaccination_start_delay', 'vaccination_effectiveness',
                  'rng_seed', 'num_days_infected','transmission_prob',
                  'num_contacts_community_day','contact_prob_household','contact_prob_school','contact_prob_workplace',
                  'num_schools','target_school_ages','num_workplaces','bool_show_demographics'
@@ -909,7 +914,7 @@ run_ibm_location <- function(pop_size              = 2000,     # population size
 #' @keywords external
 #' @export
 #pop_size <- 1e4
-create_population_matrix <- function(pop_size, num_schools, target_school_ages, num_workplaces,bool_show_demographics = TRUE)
+create_population_matrix <- function(pop_size, num_schools, target_school_ages, num_workplaces, vaccination_uptake, bool_show_demographics = TRUE)
 {
   # demographic parameters
   ages_adult <- 19:60
@@ -976,9 +981,15 @@ create_population_matrix <- function(pop_size, num_schools, target_school_ages, 
                          generation_interval = 0,            # column to store the generation interval
                          secondary_cases     = 0,             # column to store the number of secondary cases
                          stringsAsFactors = F,
-                         vaccination_effective = F)
+                         vaccination_effective = F,
+                         accept_vaccine = F)
   
   # initiate school classes by age and number of schools
+  
+  
+  flag_accept_vaccine <- pop_data$accept_vaccine == F & rbinom(pop_size, size = 1, prob = vaccination_uptake)
+  pop_data$accept_vaccine[flag_accept_vaccine] <- T
+  
   if(num_schools>0){
     # eg. 'class3_1' is the 1th classroom with 3-year olds children
     pop_data$classroom_id <- paste0('class',pop_data$age,'_',sample(num_schools,pop_size,replace =T))
